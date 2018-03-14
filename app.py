@@ -5,7 +5,7 @@ from flask import Flask, render_template, jsonify
 import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, desc
 
 # Flask Setup
 app = Flask(__name__)
@@ -88,26 +88,26 @@ def wfreq(sample):
 @app.route("/samples/<sample>")
 def samples(sample):
 
-    # Create a sample query
-    sample_query = "Samples." + sample
-
-    # Create empty dictionary & lists
-    sample_data = {}
-    otu_ids = []
-    sample_values = []
-
     # Grab info
-    results = session.query(Samples.otu_id, sample_query).order_by(sample_query).desc()
-    for result in results:
-        otu_ids.append(result[0])
-        sample_values.append(result[1])
+    stmt = session.query(Samples).statement
+    df = pd.read_sql_query(stmt, session.bind)
+    
+    # Make sure sample was found in the columns
+    if sample not in df.columns:
+        return jsonify(f"Error Sample: {sample} not found!")
+    
+    # Return any sample values greater than 1
+    df = df[df[sample] > 1]
 
-    # Add info to dictionary
-    sample_data = {
-        "otu_ids": otu_ids,
-        "sample_values": sample_values
-    }
-    return jsonify(sample_data)
+    # Sort the results by sample in descending order
+    df = df.sort_values(by=sample, ascending=0)
+
+    # Format the data to send as json
+    data = [{
+        "otu_ids": df[sample].index.values.tolist(),
+        "sample_values": df[sample].values.tolist()
+    }]
+    return jsonify(data)
 
 # Initiate Flask app
 if __name__ == "__main__":
